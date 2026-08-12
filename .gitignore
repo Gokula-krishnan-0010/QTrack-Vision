@@ -1,0 +1,34 @@
+# QTrack Vision — .gitignore
+
+# Secrets (never commit credentials)
+firmware/secrets.h
+
+# Saved frames (large binary data)
+server/frames/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.egg-info/
+dist/
+venv/
+.venv/
+
+# YOLO model weights (download at runtime)
+*.pt
+
+# SQLite database
+*.db
+*.sqlite
+
+# Node / React
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
