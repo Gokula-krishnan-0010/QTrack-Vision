@@ -1,8 +1,8 @@
-<![CDATA[# QTrack Vision
+# QTrack Vision
 
 > **AI-powered real-time queue monitoring for Indian ration shops, bank branches, and utility counters.**
 
-Built for [Samsung Solve for Tomorrow](https://www.samsung.com/in/solvefortomorrow/) — QTrack Vision uses an ESP32-CAM to capture live footage, sends it to a FastAPI backend running YOLOv8n person detection with ByteTrack tracking, and streams analytics to a React dashboard via Server-Sent Events (SSE).
+QTrack Vision uses an ESP32-CAM to capture live footage, sends it to a FastAPI backend running YOLOv8n person detection with ByteTrack tracking, and streams analytics to a React dashboard via Server-Sent Events (SSE).
 
 ---
 
@@ -406,7 +406,7 @@ Open `http://localhost:5173` in your browser. You should see:
 │  │                      │  │                               │ │
 │  └──────────────────────┘  └───────────────────────────────┘ │
 │                                                              │
-│          QTrack Vision • Samsung Solve for Tomorrow          │
+│                        QTrack Vision                         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -525,9 +525,5 @@ See [TROUBLESHOOT.md](TROUBLESHOOT.md) for detailed debugging steps.
 | **Charts** | Chart.js + react-chartjs-2 | Trend visualization |
 | **Streaming** | SSE (EventSource) | Real-time browser updates |
 
----
 
-## License
 
-This project is part of the Samsung Solve for Tomorrow submission.
-]]>
