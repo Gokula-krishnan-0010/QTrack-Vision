@@ -38,7 +38,11 @@
 #include "soc/rtc_cntl_reg.h"
 
 // Credentials & config — keep out of version control!
-#include "secrets.h"
+// #include "secrets.h"
+#define WIFI_SSID     "GK IQOO Z9x 5G"
+#define WIFI_PASSWORD "12345678"
+#define SERVER_URL    "http://10.84.158.174:8000"
+#define SHOP_ID       "ration-shop-01"
 
 // ── AI-Thinker ESP32-CAM pin mapping ───────────────────────────────────────
 // These are fixed by the PCB layout and identical for OV2640 / OV3660.
@@ -158,22 +162,40 @@ void camera_init() {
   // PSRAM is present on the AI-Thinker board, so we use it for the
   // frame buffer.  This lets us run at VGA without eating into the
   // ESP32's limited internal SRAM.
-  if (psramFound()) {
+    if (psramFound()) {
     config.frame_size   = FRAME_SIZE;       // 640×480
     config.jpeg_quality = JPEG_QUALITY;     // 12 → ~30-50 KB
     config.fb_count     = 2;                // double-buffer for smoother capture
-    config.fb_location  = CAMERA_GRAB_FROM_PSRAM;
-    config.grab_mode    = CAMERA_GRAB_LATEST;  // always grab freshest frame
+    config.fb_location  = CAMERA_FB_IN_PSRAM;      // ← was CAMERA_GRAB_IN_PSRAM
+    config.grab_mode    = CAMERA_GRAB_LATEST;      // unchanged — this one was correct
     Serial.println("[CAM] PSRAM detected — using PSRAM frame buffers");
   } else {
     // Fallback: no PSRAM — use smaller frame and single buffer
     config.frame_size   = FRAMESIZE_QVGA;   // 320×240
     config.jpeg_quality = 15;
     config.fb_count     = 1;
-    config.fb_location  = CAMERA_GRAB_FROM_INTERNAL;
-    config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
-    Serial.println("[CAM] ⚠ No PSRAM — falling back to QVGA / internal RAM");
+    config.fb_location  = CAMERA_FB_IN_DRAM;       // ← was CAMERA_GRAB_FROM_INTERNAL
+    config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;  // unchanged — this one was correct
+    Serial.println("[CAM] No PSRAM — falling back to QVGA / internal RAM");
   }
+
+  // ----------- prev code -------
+  // if (psramFound()) {
+  //   config.frame_size   = FRAME_SIZE;       // 640×480
+  //   config.jpeg_quality = JPEG_QUALITY;     // 12 → ~30-50 KB
+  //   config.fb_count     = 2;                // double-buffer for smoother capture
+  //   config.fb_location  = CAMERA_GRAB_FROM_PSRAM;
+  //   config.grab_mode    = CAMERA_GRAB_LATEST;  // always grab freshest frame
+  //   Serial.println("[CAM] PSRAM detected — using PSRAM frame buffers");
+  // } else {
+  //   // Fallback: no PSRAM — use smaller frame and single buffer
+  //   config.frame_size   = FRAMESIZE_QVGA;   // 320×240
+  //   config.jpeg_quality = 15;
+  //   config.fb_count     = 1;
+  //   config.fb_location  = CAMERA_GRAB_FROM_INTERNAL;
+  //   config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
+  //   Serial.println("[CAM] ⚠ No PSRAM — falling back to QVGA / internal RAM");
+  // }
 
   // ── Initialize the camera driver ──
   esp_err_t err = esp_camera_init(&config);
