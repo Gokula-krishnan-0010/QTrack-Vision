@@ -78,7 +78,7 @@ QTrack Vision uses an ESP32-CAM to capture live footage, sends it to a FastAPI b
 ```
 
 **Data flow:**
-1. **ESP32-CAM** captures a 640×480 JPEG frame every 5 seconds
+1. **ESP32-CAM** captures a 640×480 JPEG frame every 10 seconds
 2. Frame is HTTP POST'd to the FastAPI backend with `shop_id` and `timestamp`
 3. **YOLOv8n** detects persons (class 0), **ByteTrack** maintains persistent IDs
 4. **Analytics engine** computes queue length, estimated wait time, and exit rate
