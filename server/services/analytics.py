@@ -1,113 +1,86 @@
-"""
-QTrack Vision — Queue analytics computation.
+﻿"""Queue-region membership and progression calculations for consecutive frames."""
+from typing import Any
 
-Computes queue metrics from detection results:
-    - queue_length: persons currently in the queue zone (= person_count for now)
-    - avg_wait_sec: estimated wait time based on exit-rate moving average
-    - exit_rate:    fraction of tracked persons who left in the last N frames
-
-All state is kept in-memory per shop_id. This is reset on server restart,
-which is acceptable for a demo / Solve for Tomorrow presentation.
-"""
-
-import logging
-import time
-from collections import defaultdict, deque
-from typing import Dict, Any, List, Set
-
-logger = logging.getLogger("qtrack.analytics")
-
-# ── Per-shop tracking state ─────────────────────────────────────────────────
-# track_history[shop_id] = deque of sets of track_ids from recent frames
-_track_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=20))
-
-# exit_times[shop_id] = deque of timestamps when a person exited
-_exit_times: Dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
-
-# last_seen[shop_id] = set of track_ids from the previous frame
-_last_seen: Dict[str, Set[int]] = defaultdict(set)
-
-# Average service time per person (rolling, in seconds)
-_avg_service_times: Dict[str, float] = defaultdict(lambda: 30.0)  # default 30s
+# Position change smaller than this normalized image distance is treated as noise.
+MOVEMENT_EPSILON = 0.01
 
 
-def compute_queue_metrics(
-    shop_id: str,
-    detections: List[Dict[str, Any]],
-    person_count: int,
-) -> Dict[str, Any]:
-    """
-    Compute queue analytics from the latest frame's detections.
+def estimate_average_wait(queue_count: int, service_seconds_per_person: float) -> float:
+    """Estimate remaining wait averaged across the visible line, assuming FCFS service."""
+    if queue_count <= 1:
+        return 0.0
+    return round((queue_count - 1) * service_seconds_per_person / 2, 1)
 
-    Args:
-        shop_id:      Identifier for the shop / camera.
-        detections:   List of detection dicts from detector.py
-                      (each has 'track_id', 'bbox', 'confidence').
-        person_count: Total persons detected in this frame.
 
-    Returns:
-        Dict with keys: queue_length, avg_wait_sec, exit_rate
-    """
-    now = time.time()
+def _inside_polygon(x: float, y: float, polygon: list) -> bool:
+    inside = False
+    j = len(polygon) - 1
+    for i, point in enumerate(polygon):
+        xi, yi = float(point[0]), float(point[1])
+        xj, yj = float(polygon[j][0]), float(polygon[j][1])
+        if ((yi > y) != (yj > y)) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
 
-    # ── Extract current track IDs ──
-    current_ids: Set[int] = set()
-    for d in detections:
-        tid = d.get("track_id", -1)
-        if tid >= 0:
-            current_ids.add(tid)
 
-    # ── Compute exits (IDs that were in the last frame but not this one) ──
-    prev_ids = _last_seen[shop_id]
-    exited_ids = prev_ids - current_ids
+def prepare_detections(detections: list[dict], width: int, height: int,
+                       roi: Any, direction_x: Any, direction_y: Any) -> list[dict]:
+    """Add normalized foot point, queue membership, and projected queue position."""
+    polygon = roi if isinstance(roi, list) and len(roi) >= 3 else None
+    dx = float(direction_x) if direction_x is not None else None
+    dy = float(direction_y) if direction_y is not None else None
+    norm = ((dx * dx + dy * dy) ** 0.5) if dx is not None and dy is not None else 0
+    if norm:
+        dx, dy = dx / norm, dy / norm
+    prepared = []
+    for detection in detections:
+        x1, y1, x2, y2 = detection["bbox"]
+        # Bottom-center (foot point) better represents where someone stands than box center.
+        x = min(max(((x1 + x2) / 2) / width, 0), 1)
+        y = min(max(y2 / height, 0), 1)
+        in_queue = _inside_polygon(x, y, polygon) if polygon else True
+        prepared.append({
+            **detection,
+            "center_x": x,
+            "center_y": y,
+            "in_queue": in_queue,
+            "queue_position": (x * dx + y * dy) if norm and in_queue else None,
+        })
+    return prepared
 
-    if exited_ids:
-        for _ in exited_ids:
-            _exit_times[shop_id].append(now)
-        logger.info(f"[ANALYTICS] {shop_id}: {len(exited_ids)} person(s) exited")
 
-    # Update last-seen
-    _last_seen[shop_id] = current_ids
-    _track_history[shop_id].append(current_ids)
+def compare_frames(previous: list[dict], current: list[dict],
+                   previous_queue_count: int, current_queue_count: int,
+                   previous_time, current_time, direction_configured: bool) -> dict:
+    """Compare IDs and queue locations; missing detections alone do not count as exits."""
+    def indexed(rows):
+        return {int(row["tracker_id"]): row for row in rows
+                if row.get("tracker_id") is not None and int(row["tracker_id"]) >= 0}
 
-    # ── Exit rate ──
-    # Fraction of people who left in the last 60 seconds relative to
-    # the average number of people seen.
-    recent_exits = sum(1 for t in _exit_times[shop_id] if now - t < 60)
-    all_seen = set()
-    for frame_ids in _track_history[shop_id]:
-        all_seen |= frame_ids
-    total_seen = max(len(all_seen), 1)
-    exit_rate = round(min(recent_exits / total_seen, 1.0), 3)
-
-    # ── Average service time (exponential moving average) ──
-    # If we observed exits, update the service time estimate.
-    # We use the inter-exit interval as a proxy for service time.
-    exit_list = list(_exit_times[shop_id])
-    if len(exit_list) >= 2:
-        # Average gap between consecutive exits
-        gaps = [exit_list[i] - exit_list[i - 1]
-                for i in range(1, len(exit_list))
-                if exit_list[i] - exit_list[i - 1] < 300]  # Cap at 5 min
-        if gaps:
-            new_avg = sum(gaps) / len(gaps)
-            # EMA with alpha = 0.3
-            _avg_service_times[shop_id] = (
-                0.7 * _avg_service_times[shop_id] + 0.3 * new_avg
-            )
-
-    # ── Estimated wait time ──
-    # Simple model: wait = queue_position × avg_service_time
-    # For now, queue_length = person_count (no zone filtering yet).
-    queue_length = person_count
-    avg_service = _avg_service_times[shop_id]
-    avg_wait_sec = round(queue_length * avg_service, 1)
-
-    metrics = {
-        "queue_length": queue_length,
-        "avg_wait_sec": avg_wait_sec,
-        "exit_rate": exit_rate,
+    old, new = indexed(previous), indexed(current)
+    advanced, entered, exited = [], [], []
+    for track_id, now in new.items():
+        before = old.get(track_id)
+        if now["in_queue"] and (before is None or not before["in_queue"]):
+            entered.append(track_id)
+        elif before and before["in_queue"] and not now["in_queue"]:
+            exited.append(track_id)
+        elif (before and before["in_queue"] and now["in_queue"] and direction_configured
+              and now["queue_position"] is not None and before["queue_position"] is not None
+              and now["queue_position"] - before["queue_position"] > MOVEMENT_EPSILON):
+            advanced.append(track_id)
+    elapsed = max((current_time - previous_time).total_seconds(), 0.0)
+    return {
+        "elapsed_seconds": round(elapsed, 3),
+        "previous_queue_count": previous_queue_count,
+        "current_queue_count": current_queue_count,
+        "queue_count_delta": current_queue_count - previous_queue_count,
+        "advanced_tracker_ids": advanced,
+        "advanced_person_count": len(advanced),
+        "entered_tracker_ids": entered,
+        "entered_queue_count": len(entered),
+        "exited_tracker_ids": exited,
+        "exited_queue_count": len(exited),
+        "exit_rate": round(len(exited) / max(previous_queue_count, 1), 5),
     }
-
-    logger.debug(f"[ANALYTICS] {shop_id}: {metrics}")
-    return metrics

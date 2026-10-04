@@ -16,7 +16,7 @@ const API_BASE = "http://localhost:8000";
 export default function App() {
   const [shops, setShops] = useState(["ration-shop-01"]);
   const [shopId, setShopId] = useState("ration-shop-01");
-  const { data, connectionStatus, error } = useQueueStream(shopId);
+  const { data, history, connectionStatus, error } = useQueueStream(shopId);
 
   // Fetch available shops on mount
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function App() {
         </section>
 
         <section className="panel panel--chart">
-          <TrendChart data={data} />
+          <TrendChart history={history} />
         </section>
       </main>
 

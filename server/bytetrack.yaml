@@ -8,3 +8,4 @@ track_low_thresh: 0.1       # Low-confidence detections for second association
 new_track_thresh: 0.6       # Min confidence to initialize a brand-new track
 track_buffer: 60            # Frames to keep a lost track alive (60 × 5s = 5 min)
 match_thresh: 0.8           # IoU threshold for matching detections to tracks
+fuse_score: true            # Required by current Ultralytics ByteTrack association

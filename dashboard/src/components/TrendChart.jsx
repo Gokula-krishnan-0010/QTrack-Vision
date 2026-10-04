@@ -3,7 +3,6 @@
  * Uses Chart.js via react-chartjs-2.
  */
 
-import { useEffect, useState, useRef } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -30,31 +29,21 @@ ChartJS.register(
 
 const MAX_POINTS = 60; // Show last 60 data points (~5 min at 5s intervals)
 
-export default function TrendChart({ data }) {
-  const [history, setHistory] = useState([]);
-
-  useEffect(() => {
-    if (!data) return;
-    setHistory((prev) => {
-      const next = [
-        ...prev,
-        {
-          time: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
-          queueLength: data.queue_length ?? 0,
-          waitTime: data.avg_wait_sec ?? 0,
-          personCount: data.person_count ?? 0,
-        },
-      ];
-      return next.slice(-MAX_POINTS);
-    });
-  }, [data?.timestamp]);
+export default function TrendChart({ history = [] }) {
+  const points = history.slice(-MAX_POINTS).map((frame) => ({
+    time: new Date(frame.timestamp || Date.now()).toLocaleTimeString(),
+    queueLength: frame.queue_length ?? 0,
+    waitTime: frame.avg_wait_sec ?? null,
+    personCount: frame.person_count ?? 0,
+    advancedCount: frame.queue_update?.advanced_person_count ?? frame.advanced_person_count ?? 0,
+  }));
 
   const chartData = {
-    labels: history.map((h) => h.time),
+    labels: points.map((h) => h.time),
     datasets: [
       {
         label: "Queue Length",
-        data: history.map((h) => h.queueLength),
+        data: points.map((h) => h.queueLength),
         borderColor: "#7c3aed",
         backgroundColor: "rgba(124, 58, 237, 0.1)",
         fill: true,
@@ -64,7 +53,7 @@ export default function TrendChart({ data }) {
       },
       {
         label: "Persons Detected",
-        data: history.map((h) => h.personCount),
+        data: points.map((h) => h.personCount),
         borderColor: "#4f8cff",
         backgroundColor: "rgba(79, 140, 255, 0.1)",
         fill: true,
@@ -73,8 +62,18 @@ export default function TrendChart({ data }) {
         pointHoverRadius: 5,
       },
       {
+        label: "People Moved Forward",
+        data: points.map((h) => h.advancedCount),
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16, 185, 129, 0.08)",
+        fill: false,
+        tension: 0.35,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      },
+      {
         label: "Wait Time (s)",
-        data: history.map((h) => h.waitTime),
+        data: points.map((h) => h.waitTime),
         borderColor: "#f59e0b",
         backgroundColor: "rgba(245, 158, 11, 0.05)",
         fill: false,
@@ -142,11 +141,11 @@ export default function TrendChart({ data }) {
       <div className="trend-chart-header">
         <span className="trend-chart-title">📈 Queue Trends</span>
         <span className="trend-chart-subtitle">
-          Last {history.length} readings
+          Last {points.length} readings · updates from saved frames
         </span>
       </div>
       <div className="trend-chart-canvas">
-        {history.length > 0 ? (
+        {points.length > 0 ? (
           <Line data={chartData} options={options} />
         ) : (
           <div className="chart-placeholder">
